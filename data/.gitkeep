@@ -1,0 +1,2 @@
+# This is a placeholder for the Excel template creation
+# The actual Excel file will be created by app.py ensure_excel_exists() function

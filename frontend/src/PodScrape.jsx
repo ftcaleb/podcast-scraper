@@ -11,7 +11,7 @@ import './PodScrape.css';
 // CONFIGURATION
 // ============================================================================
 
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = 'https://podcast-scraper-10hz.onrender.com';
 
 // ============================================================================
 // UTILITY FUNCTIONS & API CALLS
@@ -23,19 +23,19 @@ const API_BASE_URL = 'http://localhost:5000';
  */
 function parseChannelName(url) {
   if (!url) return '';
-  
+
   const patterns = [
     /@([a-zA-Z0-9_-]+)/,           // @handle
     /\/channel\/([a-zA-Z0-9_-]+)/, // /channel/ID
     /\/c\/([a-zA-Z0-9_-]+)/,       // /c/name
     /\/user\/([a-zA-Z0-9_-]+)/,    // /user/name
   ];
-  
+
   for (const pattern of patterns) {
     const match = url.match(pattern);
     if (match) return match[1];
   }
-  
+
   return url;
 }
 
@@ -62,15 +62,15 @@ function formatDate(timestamp) {
   const now = new Date();
   const date = new Date(timestamp);
   const diff = now - date;
-  
+
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
-  
+
   if (minutes < 60) return `${minutes}m ago`;
   if (hours < 24) return `${hours}h ago`;
   if (days < 7) return `${days}d ago`;
-  
+
   return date.toLocaleDateString();
 }
 
@@ -101,7 +101,7 @@ async function callScrapeAPI(url) {
  */
 async function pollScrapeStatus() {
   const response = await fetch(`${API_BASE_URL}/api/scrape/status`);
-  
+
   if (!response.ok) {
     throw new Error('Failed to poll status');
   }
@@ -115,14 +115,14 @@ async function pollScrapeStatus() {
  */
 async function triggerDownload() {
   const response = await fetch(`${API_BASE_URL}/api/download`);
-  
+
   if (!response.ok) {
     throw new Error('Download failed');
   }
 
   // Get the blob
   const blob = await response.blob();
-  
+
   // Create a download link
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -164,10 +164,10 @@ function ProgressBlock({ channelName, percent, steps, isVisible }) {
         <span className="progress-channel">{channelName}</span>
         <span className="progress-percent">{percent}%</span>
       </div>
-      
+
       <div className="progress-bar-container">
-        <div 
-          className="progress-bar-fill" 
+        <div
+          className="progress-bar-fill"
           style={{ width: `${percent}%` }}
         />
       </div>
@@ -175,7 +175,7 @@ function ProgressBlock({ channelName, percent, steps, isVisible }) {
       <div className="progress-log">
         {steps.map((step, idx) => (
           <div key={idx} className="log-line">
-            <div 
+            <div
               className={`log-dot ${step.status}`}
               style={step.status === 'active' ? { animation: 'pulse 1.2s infinite' } : {}}
             />
@@ -255,8 +255,8 @@ function ScrapeHistory({ items }) {
       ) : (
         <div className="history-list">
           {items.map((item, idx) => (
-            <div 
-              key={item.id} 
+            <div
+              key={item.id}
               className="history-item"
               style={{ animation: `fadeUp 0.3s ease ${idx * 50}ms backwards` }}
             >
@@ -403,7 +403,7 @@ export default function PodScrape() {
           if (data.type === 'progress') {
             // Update progress bar and step
             const stepIndex = Math.floor((data.progress - 10) / 12.86); // Map progress % to step index
-            
+
             setCurrentProgress(prev => ({
               ...prev,
               percent: data.progress,
@@ -426,9 +426,9 @@ export default function PodScrape() {
                 percent: 100,
                 steps: [
                   ...prev.steps.map(s => ({ ...s, status: 'complete' })),
-                  { 
-                    label: `✓ ${finalEpisodes} episodes written to Podcast_Scraper_Database.xlsx`, 
-                    status: 'complete' 
+                  {
+                    label: `✓ ${finalEpisodes} episodes written to Podcast_Scraper_Database.xlsx`,
+                    status: 'complete'
                   }
                 ],
                 episodesScraped: finalEpisodes,
@@ -539,7 +539,7 @@ export default function PodScrape() {
             Scrape any podcast. <span className="hero-accent">Export everything.</span>
           </h1>
           <p className="hero-subtitle">
-            Paste a YouTube channel URL below. PodScrape pulls every episode — titles, guests, views, 
+            Paste a YouTube channel URL below. PodScrape pulls every episode — titles, guests, views,
             likes, tags, durations — and writes it all into your spreadsheet.
           </p>
         </section>

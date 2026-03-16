@@ -481,7 +481,7 @@ export default function PodScrape() {
       if ((progress === 100 || stage === 'Complete') && status === 'done') {
         stopEngagementMessages();
         setDownloadReady(true);
-        setEngagementMessage('✅ Your spreadsheet is ready. Every episode, captured.');
+        setEngagementMessage('Your spreadsheet is ready. Every episode, captured.');
 
         const finalEpisodes = episodes_count || 0;
         const finalChannelName = channel_name || channelName || parseChannelName(url);

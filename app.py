@@ -157,7 +157,7 @@ def server_error(error):
 # MAIN
 # ============================================================================
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     print("=" * 70)
     print("PodScrape Backend API Server")
@@ -167,7 +167,8 @@ if __name__ == '__main__':
     print("✓ GET  /health        — Health check")
     print("=" * 70)
 
-    port = int(os.environ.get("PORT", 5000))
+    # Render provides the PORT environment variable
+    port = int(os.environ.get("PORT", 10000))
 
     app.run(
         host="0.0.0.0",

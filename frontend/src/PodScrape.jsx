@@ -12,7 +12,8 @@ import { ENGAGEMENT_MESSAGES, STAGE_MESSAGES } from './constants/engagementMessa
 // CONFIGURATION
 // ============================================================================
 
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = 'https://podcast-scraper-10hz.onrender.com';
+
 
 // ============================================================================
 // UTILITY FUNCTIONS & API CALLS

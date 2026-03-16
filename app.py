@@ -13,7 +13,7 @@ from flask_cors import CORS
 load_dotenv()
 
 # Import scraper modules
-from scraper import scrape_channel
+from scraper import scrape_channel, scrape_channel_stream
 from excel_writer import ensure_excel_exists
 
 # ============================================================================
@@ -61,46 +61,36 @@ def scrape():
 
     def generate():
 
+        def sse_payload(payload):
+            return f"data: {json.dumps(payload)}\n\n"
+
         try:
-            def progress_callback(step_name, progress_percent):
-                message = {
-                    "type": "progress",
-                    "step": step_name,
-                    "progress": progress_percent
-                }
-                return f"data: {json.dumps(message)}\n\n"
+            for event in scrape_channel_stream(url):
+                # Ensure payload is a dict; ignore unexpected yields
+                if not isinstance(event, dict):
+                    continue
 
-            result = scrape_channel(url, callback=progress_callback)
-
-            final_message = {
-                "type": "complete",
-                "status": result["status"],
-                "message": result["message"],
-                "channel_name": result["channel_name"],
-                "episodes_count": result["episodes_count"],
-                "download_url": "/api/download" if result["status"] == "success" else None
-            }
-
-            yield f"data: {json.dumps(final_message)}\n\n"
+                yield sse_payload(event)
 
         except Exception as e:
             import traceback
             traceback.print_exc()
 
             error_message = {
-                "type": "error",
+                "stage": "Error",
+                "progress": 0,
                 "status": "error",
-                "message": str(e)
+                "detail": str(e)
             }
-
-            yield f"data: {json.dumps(error_message)}\n\n"
+            yield sse_payload(error_message)
 
     return Response(
         stream_with_context(generate()),
         mimetype="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no"
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive"
         }
     )
 
@@ -168,7 +158,8 @@ if __name__ == "__main__":
     print("=" * 70)
 
     # Render provides the PORT environment variable
-    port = int(os.environ.get("PORT", 10000))
+    # Default to 5000 so it matches the frontend dev setup
+    port = int(os.environ.get("PORT", 5000))
 
     app.run(
         host="0.0.0.0",

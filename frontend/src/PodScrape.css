@@ -524,9 +524,18 @@ body::after {
   opacity: 0.3;
 }
 
-.log-dot.complete {
-  background: var(--green);
+.log-dot.done {
+  background: var(--accent);
+  opacity: 0.6;
   animation: none;
+}
+
+.log-dot.active {
+  background: var(--accent);
+}
+
+.log-dot.pending {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .log-dot.error {
@@ -539,6 +548,116 @@ body::after {
   color: var(--text-muted);
   font-family: 'Inter', sans-serif;
   font-weight: 400;
+}
+
+.log-text.done {
+  color: rgba(255, 255, 255, 0.45);
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 255, 255, 0.2);
+}
+
+.log-text.active {
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.log-text.pending {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.log-text.error {
+  color: #ff6b6b;
+}
+
+.scrape-detail {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-top: 8px;
+  padding-left: 4px;
+  letter-spacing: 0.02em;
+  min-height: 16px;
+  transition: opacity 0.3s ease;
+}
+
+.engagement-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 14px 16px;
+  background: rgba(114, 0, 117, 0.08);
+  border: 1px solid rgba(114, 0, 117, 0.2);
+  border-radius: 10px;
+  animation: fadeUp 0.4s ease;
+  transition: all 0.3s ease;
+}
+
+.engagement-dot {
+  width: 6px;
+  height: 6px;
+  min-width: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-top: 5px;
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+.engagement-message span,
+.engagement-message {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.6;
+}
+
+.download-ready {
+  margin-top: 24px;
+  text-align: center;
+  animation: fadeUp 0.5s ease;
+}
+
+.download-ready-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 16px;
+}
+
+.download-button {
+  display: inline-block;
+  background: linear-gradient(135deg,
+    var(--accent), var(--accent-secondary));
+  color: #ffffff;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 14px 36px;
+  border-radius: 10px;
+  border: none;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.3s ease;
+}
+
+.download-button:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 16px rgba(114, 0, 117, 0.5),
+    0 0 40px rgba(114, 0, 117, 0.25),
+    0 8px 32px rgba(94, 7, 67, 0.4);
+}
+
+@keyframes messageFade {
+  0%   { opacity: 0; transform: translateY(4px); }
+  10%  { opacity: 1; transform: translateY(0); }
+  90%  { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-4px); }
 }
 
 /* ============================================================================

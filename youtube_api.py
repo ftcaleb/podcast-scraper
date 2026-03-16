@@ -161,6 +161,35 @@ def get_all_video_ids(playlist_id):
 
     return video_ids
 
+
+def stream_video_ids(playlist_id):
+    """Yield video IDs one by one and provide periodic progress counts.
+
+    This generator is intended for use in streaming progress scenarios.
+    It yields tuples of (video_id, count) where count is the total number
+    of videos seen so far.
+    """
+    count = 0
+    next_page = None
+
+    while True:
+        request = youtube.playlistItems().list(
+            part="snippet",
+            playlistId=playlist_id,
+            maxResults=50,
+            pageToken=next_page
+        )
+        response = request.execute()
+
+        for item in response.get("items", []):
+            count += 1
+            video_id = item["snippet"]["resourceId"]["videoId"]
+            yield video_id, count
+
+        next_page = response.get("nextPageToken")
+        if not next_page:
+            break
+
 def get_video_metadata(video_ids):
 
     videos = []

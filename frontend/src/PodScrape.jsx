@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './PodScrape.css';
+import { ENGAGEMENT_MESSAGES, STAGE_MESSAGES } from './constants/engagementMessages';
 
 /**
  * PodScrape - YouTube Podcast Scraper Frontend
@@ -11,7 +12,7 @@ import './PodScrape.css';
 // CONFIGURATION
 // ============================================================================
 
-const API_BASE_URL = 'https://podcast-scraper-10hz.onrender.com';
+const API_BASE_URL = 'http://localhost:5000';
 
 // ============================================================================
 // UTILITY FUNCTIONS & API CALLS
@@ -75,41 +76,6 @@ function formatDate(timestamp) {
 }
 
 /**
- * Call backend to initiate scrape
- * POST /api/scrape with YouTube URL
- */
-async function callScrapeAPI(url) {
-  const response = await fetch(`${API_BASE_URL}/api/scrape`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ url })
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Scrape failed');
-  }
-
-  return await response.json();
-}
-
-/**
- * Poll scrape progress (optional - not currently used)
- * GET /api/scrape/status
- */
-async function pollScrapeStatus() {
-  const response = await fetch(`${API_BASE_URL}/api/scrape/status`);
-
-  if (!response.ok) {
-    throw new Error('Failed to poll status');
-  }
-
-  return await response.json();
-}
-
-/**
  * Trigger download of Excel file
  * GET /api/download - returns blob to trigger browser download
  */
@@ -155,23 +121,36 @@ function Toast({ message, type = 'info', onDismiss }) {
 // PROGRESS BLOCK COMPONENT
 // ============================================================================
 
-function ProgressBlock({ channelName, percent, steps, isVisible }) {
+function ProgressBlock({
+  channelName,
+  percent,
+  steps,
+  isVisible,
+  engagementMessage,
+  scrapeDetail,
+  downloadReady,
+  downloadUrl
+}) {
   if (!isVisible) return null;
 
   return (
     <div className="progress-block" style={{ animation: 'fadeUp 0.3s ease' }}>
+
+      {/* Header */}
       <div className="progress-header">
         <span className="progress-channel">{channelName}</span>
         <span className="progress-percent">{percent}%</span>
       </div>
 
+      {/* Progress Bar */}
       <div className="progress-bar-container">
         <div
           className="progress-bar-fill"
-          style={{ width: `${percent}%` }}
+          style={{ width: `${percent}%`, transition: 'width 0.5s ease' }}
         />
       </div>
 
+      {/* Step Log */}
       <div className="progress-log">
         {steps.map((step, idx) => (
           <div key={idx} className="log-line">
@@ -179,10 +158,38 @@ function ProgressBlock({ channelName, percent, steps, isVisible }) {
               className={`log-dot ${step.status}`}
               style={step.status === 'active' ? { animation: 'pulse 1.2s infinite' } : {}}
             />
-            <span className="log-text">{step.label}</span>
+            <span className={`log-text ${step.status}`}>{step.label}</span>
           </div>
         ))}
       </div>
+
+      {/* Live detail (e.g. video count) */}
+      {scrapeDetail && (
+        <div className="scrape-detail">{scrapeDetail}</div>
+      )}
+
+      {/* Engagement message */}
+      {engagementMessage && !downloadReady && (
+        <div className="engagement-message">
+          <span className="engagement-dot" />
+          {engagementMessage}
+        </div>
+      )}
+
+      {/* Download button */}
+      {downloadReady && (
+        <div className="download-ready">
+          <p className="download-ready-text">{engagementMessage}</p>
+          <a
+            href={downloadUrl}
+            className="download-button"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Download Spreadsheet
+          </a>
+        </div>
+      )}
     </div>
   );
 }
@@ -310,17 +317,32 @@ export default function PodScrape() {
   const [isScraping, setIsScraping] = useState(false);
   const [history, setHistory] = useState([]);
   const [toast, setToast] = useState(null);
-  const [progressVisible, setProgressVisible] = useState(false);
+
+  const [isProgressVisible, setIsProgressVisible] = useState(false);
+  const [channelName, setChannelName] = useState('');
+  const [percent, setPercent] = useState(0);
+  const [steps, setSteps] = useState([
+    { label: 'Connecting to backend', status: 'pending' },
+    { label: 'Resolving channel identity', status: 'pending' },
+    { label: 'Fetching upload playlist', status: 'pending' },
+    { label: 'Collecting all video IDs', status: 'pending' },
+    { label: 'Fetching video metadata', status: 'pending' },
+    { label: 'Running AI enrichment pass', status: 'pending' },
+    { label: 'Writing to spreadsheet', status: 'pending' },
+    { label: 'Finalising your download', status: 'pending' }
+  ]);
+  const [downloadReady, setDownloadReady] = useState(false);
+  const [engagementMessage, setEngagementMessage] = useState('');
+  const [scrapeDetail, setScrapeDetail] = useState('');
+
   const [statsVisible, setStatsVisible] = useState(false);
   const [downloadVisible, setDownloadVisible] = useState(false);
-  const [currentProgress, setCurrentProgress] = useState({
-    channelName: '',
-    percent: 0,
-    steps: [],
-    episodesScraped: 0,
-    channelsDone: 0,
-    rowsInSheet: 0
-  });
+  const [episodesScraped, setEpisodesScraped] = useState(0);
+  const [channelsDone, setChannelsDone] = useState(0);
+  const [rowsInSheet, setRowsInSheet] = useState(0);
+
+  const eventSourceRef = useRef(null);
+  const engagementTimerRef = useRef(null);
   const inputRef = useRef(null);
 
   // ---- Initialization: Load history from localStorage ----
@@ -340,12 +362,154 @@ export default function PodScrape() {
     localStorage.setItem('podscrape_history', JSON.stringify(history));
   }, [history]);
 
-  // ---- Show toast notification ----
+  // ---- Toast helper ----
   const showToast = useCallback((message, type = 'info') => {
     setToast({ message, type, id: Date.now() });
   }, []);
 
-  // ---- Handle scrape start ----
+  // ---- Engagement messages helpers ----
+  const startEngagementMessages = useCallback(() => {
+    let messageIndex = 0;
+
+    setEngagementMessage(ENGAGEMENT_MESSAGES[0].text);
+    messageIndex = 1;
+
+    const rotate = () => {
+      const delay = Math.floor(Math.random() * (18000 - 12000)) + 12000;
+
+      engagementTimerRef.current = setTimeout(() => {
+        if (messageIndex < ENGAGEMENT_MESSAGES.length) {
+          setEngagementMessage(ENGAGEMENT_MESSAGES[messageIndex].text);
+          messageIndex += 1;
+        } else {
+          messageIndex = 2;
+          setEngagementMessage(ENGAGEMENT_MESSAGES[messageIndex].text);
+        }
+        rotate();
+      }, delay);
+    };
+
+    rotate();
+  }, []);
+
+  const stopEngagementMessages = useCallback(() => {
+    if (engagementTimerRef.current) {
+      clearTimeout(engagementTimerRef.current);
+      engagementTimerRef.current = null;
+    }
+  }, []);
+
+  // ---- Stream & timer cleanup ----
+  const closeStream = useCallback(() => {
+    if (eventSourceRef.current) {
+      try {
+        eventSourceRef.current.close();
+      } catch {
+        // ignore
+      }
+      eventSourceRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      closeStream();
+      stopEngagementMessages();
+    };
+  }, [closeStream, stopEngagementMessages]);
+
+  // ---- Progress state helpers ----
+  const resetProgress = useCallback(() => {
+    setPercent(0);
+    setScrapeDetail('');
+    setEngagementMessage('');
+    setDownloadReady(false);
+    setSteps([
+      { label: 'Connecting to backend', status: 'pending' },
+      { label: 'Resolving channel identity', status: 'pending' },
+      { label: 'Fetching upload playlist', status: 'pending' },
+      { label: 'Collecting all video IDs', status: 'pending' },
+      { label: 'Fetching video metadata', status: 'pending' },
+      { label: 'Running AI enrichment pass', status: 'pending' },
+      { label: 'Writing to spreadsheet', status: 'pending' },
+      { label: 'Finalising your download', status: 'pending' }
+    ]);
+    setChannelName('');
+  }, []);
+
+  const handleProgressEvent = useCallback(
+    (event) => {
+      const { stage, progress, status, detail, channel_name, episodes_count } = event;
+
+      if (typeof progress === 'number') {
+        setPercent(progress);
+      }
+
+      if (detail) {
+        setScrapeDetail(detail);
+      }
+
+      if (status === 'active' && STAGE_MESSAGES[stage]) {
+        setEngagementMessage(STAGE_MESSAGES[stage]);
+      }
+
+      setSteps((prev) => {
+        const stageIndex = prev.findIndex((s) => s.label === stage);
+        return prev.map((step, idx) => {
+          if (step.label === stage) {
+            return { ...step, status };
+          }
+
+          if (status === 'active' && stageIndex !== -1 && idx < stageIndex) {
+            return { ...step, status: 'done' };
+          }
+
+          return step;
+        });
+      });
+
+      if (status === 'error') {
+        stopEngagementMessages();
+        closeStream();
+        setEngagementMessage(
+          `Something went wrong: ${detail || 'Unknown error'}. Please try again.`
+        );
+        setIsScraping(false);
+        setIsProgressVisible(false);
+      }
+
+      if ((progress === 100 || stage === 'Complete') && status === 'done') {
+        stopEngagementMessages();
+        setDownloadReady(true);
+        setEngagementMessage('✅ Your spreadsheet is ready. Every episode, captured.');
+
+        const finalEpisodes = episodes_count || 0;
+        const finalChannelName = channel_name || channelName || parseChannelName(url);
+
+        setEpisodesScraped(finalEpisodes);
+        setChannelsDone((prev) => prev + 1);
+        setRowsInSheet(finalEpisodes);
+
+        // Persist history
+        const newHistoryItem = {
+          id: Date.now(),
+          name: finalChannelName,
+          url,
+          date: Date.now(),
+          episodes: finalEpisodes,
+          status: 'complete'
+        };
+
+        setHistory((prev) => [newHistoryItem, ...prev]);
+
+        setIsScraping(false);
+        setStatsVisible(true);
+        setDownloadVisible(true);
+      }
+    },
+    [closeStream, stopEngagementMessages, channelName, url]
+  );
+
   const handleScrape = useCallback(async () => {
     // Validation
     if (!url.trim() || url.trim().length < 4) {
@@ -358,146 +522,94 @@ export default function PodScrape() {
       return;
     }
 
-    const channelName = parseChannelName(url);
+    // Reset state
+    closeStream();
+    stopEngagementMessages();
+    resetProgress();
 
-    // Start scraping
+    const normalizedChannel = parseChannelName(url);
+    setChannelName(normalizedChannel);
+    setIsProgressVisible(true);
     setIsScraping(true);
-    setProgressVisible(true);
     setStatsVisible(false);
     setDownloadVisible(false);
+    setEpisodesScraped(0);
+    setChannelsDone(0);
+    setRowsInSheet(0);
 
-    // Initialize progress steps
-    const logSteps = [
-      { label: 'Connecting to backend…', status: 'active' },
-      { label: 'Resolving channel ID…', status: 'pending' },
-      { label: 'Fetching upload playlist…', status: 'pending' },
-      { label: 'Collecting video IDs…', status: 'pending' },
-      { label: 'Fetching metadata for videos…', status: 'pending' },
-      { label: 'Running AI enrichment pass…', status: 'pending' },
-      { label: 'Writing to spreadsheet…', status: 'pending' }
-    ];
+    // Activate first step
+    setSteps((prev) =>
+      prev.map((step, idx) => ({
+        ...step,
+        status: idx === 0 ? 'active' : 'pending'
+      }))
+    );
 
-    setCurrentProgress({
-      channelName: channelName,
-      percent: 0,
-      steps: logSteps,
-      episodesScraped: 0,
-      channelsDone: 0,
-      rowsInSheet: 0
-    });
+    startEngagementMessages();
 
     try {
-      // Use Server-Sent Events (SSE) to stream progress from backend
-      const eventSource = new EventSource(
-        `${API_BASE_URL}/api/scrape?url=${encodeURIComponent(url)}`
-      );
+      const controller = new AbortController();
+      const response = await fetch(`${API_BASE_URL}/api/scrape`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+        signal: controller.signal
+      });
 
-      let completedSteps = 0;
-      let finalEpisodes = 0;
-      let finalChannelName = channelName;
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.message || 'Scrape failed');
+      }
 
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
+      eventSourceRef.current = {
+        close: () => controller.abort()
+      };
 
-          if (data.type === 'progress') {
-            // Update progress bar and step
-            const stepIndex = Math.floor((data.progress - 10) / 12.86); // Map progress % to step index
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-            setCurrentProgress(prev => ({
-              ...prev,
-              percent: data.progress,
-              steps: prev.steps.map((step, idx) => ({
-                ...step,
-                status: idx < stepIndex ? 'complete' : idx === stepIndex ? 'active' : 'pending'
-              }))
-            }));
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-          } else if (data.type === 'complete') {
-            eventSource.close();
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n');
+        buffer = parts.pop();
 
-            if (data.status === 'success') {
-              finalEpisodes = data.episodes_count || 0;
-              finalChannelName = data.channel_name || channelName;
-
-              // Update to show completion
-              setCurrentProgress(prev => ({
-                ...prev,
-                percent: 100,
-                steps: [
-                  ...prev.steps.map(s => ({ ...s, status: 'complete' })),
-                  {
-                    label: `✓ ${finalEpisodes} episodes written to Podcast_Scraper_Database.xlsx`,
-                    status: 'complete'
-                  }
-                ],
-                episodesScraped: finalEpisodes,
-                channelsDone: 1,
-                rowsInSheet: finalEpisodes
-              }));
-
-              // Add to history
-              const newHistoryItem = {
-                id: Date.now(),
-                name: finalChannelName,
-                url,
-                date: Date.now(),
-                episodes: finalEpisodes,
-                status: 'complete'
-              };
-
-              setHistory(prev => [newHistoryItem, ...prev]);
-
-              // Show success toast
-              showToast(
-                `"${finalChannelName}" scraped — ${finalEpisodes} episodes ready.`,
-                'success'
-              );
-
-              // Show stats and download banner
-              setTimeout(() => {
-                setStatsVisible(true);
-                setDownloadVisible(true);
-              }, 500);
-
-              // Auto-hide progress block after 3 seconds
-              setTimeout(() => {
-                setProgressVisible(false);
-              }, 3000);
-
-              // Clear input
-              setUrl('');
-
-            } else {
-              // Error case
-              showToast(`Scrape failed: ${data.message}`, 'error');
-              setProgressVisible(false);
-            }
-
-            setIsScraping(false);
+        for (const line of parts) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6);
+          try {
+            const event = JSON.parse(raw);
+            handleProgressEvent(event);
+          } catch (e) {
+            console.error('Parse error:', e);
           }
-
-        } catch (e) {
-          console.error('Error parsing SSE message:', e);
         }
-      };
+      }
 
-      eventSource.onerror = (error) => {
-        console.error('EventSource error:', error);
-        eventSource.close();
+      closeStream();
+    } catch (err) {
+      // Ignore abort errors triggered by a normal stop
+      const isAbort = err?.name === 'AbortError' || err?.message?.includes('aborted');
+      if (!isAbort) {
+        console.error('Stream error:', err);
         showToast('Connection lost. Please try again.', 'error');
-        setProgressVisible(false);
+        setIsProgressVisible(false);
         setIsScraping(false);
-      };
-
-    } catch (error) {
-      console.error('Scrape error:', error);
-      showToast(`Scrape failed: ${error.message}`, 'error');
-      setProgressVisible(false);
-      setIsScraping(false);
+        stopEngagementMessages();
+      }
     }
-
-  }, [url, showToast]);
+  }, [
+    url,
+    showToast,
+    closeStream,
+    stopEngagementMessages,
+    resetProgress,
+    startEngagementMessages,
+    handleProgressEvent
+  ]);
 
   // ---- Handle download ----
   const handleDownload = useCallback(async () => {
@@ -511,11 +623,14 @@ export default function PodScrape() {
   }, [showToast]);
 
   // ---- Handle Enter key in input ----
-  const handleKeyDown = useCallback((e) => {
-    if (e.key === 'Enter' && !isScraping) {
-      handleScrape();
-    }
-  }, [handleScrape, isScraping]);
+  const handleKeyDown = useCallback(
+    (e) => {
+      if (e.key === 'Enter' && !isScraping) {
+        handleScrape();
+      }
+    },
+    [handleScrape, isScraping]
+  );
 
   return (
     <div className="podscrape">
@@ -578,18 +693,22 @@ export default function PodScrape() {
 
           {/* Progress block */}
           <ProgressBlock
-            channelName={currentProgress.channelName}
-            percent={currentProgress.percent}
-            steps={currentProgress.steps}
-            isVisible={progressVisible}
+            channelName={channelName}
+            percent={percent}
+            steps={steps}
+            isVisible={isProgressVisible}
+            engagementMessage={engagementMessage}
+            scrapeDetail={scrapeDetail}
+            downloadReady={downloadReady}
+            downloadUrl={`${API_BASE_URL}/api/download`}
           />
         </section>
 
         {/* ========== STATS STRIP ========== */}
         <StatsStrip
-          episodesScraped={currentProgress.episodesScraped}
-          channelsDone={currentProgress.channelsDone}
-          rowsInSheet={currentProgress.rowsInSheet}
+          episodesScraped={episodesScraped}
+          channelsDone={channelsDone}
+          rowsInSheet={rowsInSheet}
           isVisible={statsVisible}
         />
 
